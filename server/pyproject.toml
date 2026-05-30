@@ -8,6 +8,9 @@ dependencies = [
     "pipecatcloud>=0.7.1",
     "openai>=1.40.0",
     "anthropic>=0.40.0",
+    # 1.24+ dropped macOS x86_64 (Intel Mac) wheels; pin so local dev installs.
+    # 1.23.2 still ships Linux wheels too, so the Pipecat Cloud build is unaffected.
+    "onnxruntime<1.24",
     "fastapi>=0.115.0",
     "uvicorn>=0.30.0",
     "aiohttp>=3.9.0",
