@@ -422,6 +422,12 @@ def all_customers() -> list[dict]:
 # returning caller, last order on file, and a remembered allergy.
 SEED_CUSTOMERS = [
     # phone, name, last_order_items, last_delivery, allergies, likes
+    # Owner's own phone — seeded so the LIVE phone demo hits the killer flow:
+    # call in, "same as last time, but no lilies — mom's allergic."
+    ("+17077279198", "Evode",
+     [{"bouquet": "rose romance", "quantity": 1, "price": 65.0}],
+     {"recipient_name": "Mom", "address": "pickup", "delivery_date": "last week"},
+     ["lilies"], ["roses"]),
     ("+14155551234", "Alex Rivera",
      [{"bouquet": "rose romance", "quantity": 1, "price": 65.0}],
      {"recipient_name": "Mom", "address": "412 Pine St", "delivery_date": "last Friday"},
