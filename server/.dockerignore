@@ -1,0 +1,12 @@
+.venv/
+.env
+*.env
+secondline.db
+*.db
+*.db-wal
+*.db-shm
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+uv.lock
