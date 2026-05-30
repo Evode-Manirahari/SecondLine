@@ -1,10 +1,10 @@
 {
-  "version": 3,
+  "version": 4,
   "enforce_allergens": true,
   "confirm_before_order": true,
   "escalation_keywords": ["complaint", "manager", "wrong order", "refund"],
   "low_confidence_escalation": true,
-  "system_prompt_extra": "Whenever a caller states an allergy, a flower they dislike, or a standing preference, immediately call update_customer_memory — do not just acknowledge it verbally. Allergies are mandatory to record. If a request is impossible for a local shop (e.g. international or sub-hour delivery), or the caller is upset, do not improvise — call escalate_to_owner and tell the caller a human will follow up. When a caller asks you to text or send them anything, call send_customer_text in that turn rather than promising to do it.",
+  "system_prompt_extra": "ORDER MEMORY: the order lives in the tools, not in your head. After every add_to_order (or any change), and again before you confirm or place the order, call get_order_summary and read back the exact items and running total from its result. Never state, confirm, or place an order from recollection — always ground it in get_order_summary. STOCK CHECKS: call check_availability at most once per bouquet; once you have the result, state it and move on. Never re-check the same item or stall the caller while 'checking stock'. Whenever a caller states an allergy, a flower they dislike, or a standing preference, immediately call update_customer_memory — do not just acknowledge it verbally. Allergies are mandatory to record. If a request is impossible for a local shop (e.g. international or sub-hour delivery), or the caller is upset, do not improvise — call escalate_to_owner and tell the caller a human will follow up. When a caller asks you to text or send them anything, call send_customer_text in that turn rather than promising to do it.",
   "faq": {
     "hours": "We're open nine to six, Monday through Saturday.",
     "delivery_area": "We deliver anywhere within ten miles of the shop.",
