@@ -90,8 +90,9 @@ def _select(only: list[str] | None) -> list[dict]:
 
 
 async def main_async(args):
-    if not os.environ.get("OPENAI_API_KEY"):
-        sys.exit("OPENAI_API_KEY required to run the eval harness (the caller + judge LLMs).")
+    if not harness.aux_available():
+        sys.exit("Set ANTHROPIC_API_KEY (Claude — default) or OPENAI_API_KEY for the eval "
+                 "caller-simulator + judge.")
     scenarios = _select(args.only)
 
     if args.mode == "baseline":

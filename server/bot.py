@@ -97,13 +97,24 @@ async def get_call_info(call_sid: str) -> dict:
 
 def _build_llm(system_instruction: str):
     """Select the LLM. Default Nemotron when its URL is configured, else GPT-4.1.
+    Opt into Claude with LLM_PROVIDER=claude (uses your Anthropic credits).
 
-    Both services accept the system prompt via their Settings (matching the
-    starter), so we pass it straight in. Returns (llm_service, model_label).
+    Returns (llm_service, model_label, system_in_context). GPT/Nemotron take the
+    system prompt via Settings; Claude (Pipecat AnthropicLLMService) takes it via
+    the context, so the caller injects it there when the flag is True.
     """
     provider = os.environ.get("LLM_PROVIDER", "").lower()
     nemotron_url = os.environ.get("NEMOTRON_LLM_URL", "")
     use_nemotron = provider == "nemotron" or (provider == "" and bool(nemotron_url))
+
+    if provider == "claude":
+        from pipecat.services.anthropic.llm import AnthropicLLMService
+        # Default to the most capable model; set CLAUDE_MODEL=claude-haiku-4-5 or
+        # claude-sonnet-4-6 for lower voice latency if needed.
+        model = os.environ.get("CLAUDE_MODEL", "claude-opus-4-8")
+        llm = AnthropicLLMService(api_key=os.environ["ANTHROPIC_API_KEY"], model=model)
+        logger.info(f"LLM: Anthropic Claude ({model})")
+        return llm, f"claude:{model}", True
 
     if use_nemotron and nemotron_url:
         from nemotron_llm import VLLMOpenAILLMService
@@ -119,7 +130,7 @@ def _build_llm(system_instruction: str):
             ),
         )
         logger.info(f"LLM: Nemotron ({model}) via {nemotron_url}")
-        return llm, f"nemotron:{model}"
+        return llm, f"nemotron:{model}", False
 
     # GPT-4.1 fallback
     from pipecat.services.openai.responses.llm import OpenAIResponsesLLMService
@@ -131,7 +142,7 @@ def _build_llm(system_instruction: str):
         ),
     )
     logger.info(f"LLM: OpenAI ({model})")
-    return llm, f"gpt:{model}"
+    return llm, f"gpt:{model}", False
 
 
 def _build_stt():
@@ -171,7 +182,7 @@ async def run_bot(
     session.refresh_memory()
     system_instruction = agent_mod.build_system_prompt(session.memory, session.policy)
 
-    llm, model_label = _build_llm(system_instruction)
+    llm, model_label, system_in_context = _build_llm(system_instruction)
     session.model = model_label
     backend.start_call(call_id, phone, model_label)
     stt = _build_stt()
@@ -206,8 +217,11 @@ async def run_bot(
     for fn in tool_functions:
         llm.register_direct_function(fn)
 
-    # System prompt is already set on the LLM via Settings (see _build_llm).
+    # GPT/Nemotron get the system prompt via Settings (see _build_llm); Claude
+    # takes it from the context.
     context = LLMContext(tools=tools)
+    if system_in_context:
+        context.add_message({"role": "system", "content": system_instruction})
 
     user_aggregator, assistant_aggregator = LLMContextAggregatorPair(
         context,

@@ -12,8 +12,16 @@ uv sync
 python backend.py --reset     # seed catalog + repeat customers
 uv run bot.py                 # http://localhost:7860 → Connect → talk in the browser
 ```
-Force a model: `LLM_PROVIDER=gpt uv run bot.py` or `LLM_PROVIDER=nemotron uv run bot.py`.
+Force a model: `LLM_PROVIDER=gpt|nemotron|claude uv run bot.py`.
 (Default: Nemotron if `NEMOTRON_LLM_URL` is set, otherwise GPT-4.1.)
+
+**Using Claude credits instead of OpenAI?** You don't need OpenAI at all:
+- Bot: `LLM_PROVIDER=claude` (set `ANTHROPIC_API_KEY`; `CLAUDE_MODEL` defaults to
+  `claude-opus-4-8` — use `claude-haiku-4-5` for lowest voice latency). Or keep
+  the bot on Nemotron (recommended for the NVIDIA judging criterion).
+- Eval: the caller-simulator + judge auto-use Claude whenever `ANTHROPIC_API_KEY`
+  is set; run the agent-under-test on Nemotron via `EVAL_AGENT_PROVIDER=nemotron`.
+  That path needs zero OpenAI keys.
 
 NVIDIA endpoints (from the hackathon README):
 ```bash

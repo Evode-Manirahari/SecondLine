@@ -43,25 +43,131 @@ try:
 except Exception:  # pragma: no cover
     OpenAI = None
 
+try:
+    import anthropic
+except Exception:  # pragma: no cover
+    anthropic = None
 
-# ── LLM clients ───────────────────────────────────────────────────────────────
+
+# ── agent-under-test client (OpenAI SDK; points at Nemotron or OpenAI) ─────────
+# The agent the eval grades runs on Nemotron (NVIDIA, OpenAI-compatible vLLM) by
+# default, or GPT-4.1. This stays on the openai SDK because the Nemotron endpoint
+# *is* an OpenAI-compatible server — that is the correct client for it.
 
 def _agent_client_and_model():
-    provider = os.environ.get("EVAL_AGENT_PROVIDER", "gpt").lower()
-    if provider == "nemotron" and os.environ.get("NEMOTRON_LLM_URL"):
-        return (OpenAI(base_url=os.environ["NEMOTRON_LLM_URL"],
-                       api_key=os.environ.get("NEMOTRON_API_KEY", "dummy")),
+    provider = os.environ.get("EVAL_AGENT_PROVIDER", "").lower()
+    nem = os.environ.get("NEMOTRON_LLM_URL")
+    if not provider:
+        provider = "nemotron" if nem else "gpt"
+    if provider == "nemotron" and nem:
+        return (OpenAI(base_url=nem, api_key=os.environ.get("NEMOTRON_API_KEY", "dummy")),
                 os.environ.get("NEMOTRON_LLM_MODEL", "nvidia/nemotron-3-super"))
+    if not os.environ.get("OPENAI_API_KEY"):
+        if nem:  # no OpenAI key but Nemotron is up — use it
+            return (OpenAI(base_url=nem, api_key=os.environ.get("NEMOTRON_API_KEY", "dummy")),
+                    os.environ.get("NEMOTRON_LLM_MODEL", "nvidia/nemotron-3-super"))
+        raise RuntimeError("No agent backend — set OPENAI_API_KEY or NEMOTRON_LLM_URL.")
     return OpenAI(api_key=os.environ["OPENAI_API_KEY"]), os.environ.get("EVAL_AGENT_MODEL", "gpt-4.1")
-
-
-def _aux_client_and_model():
-    """Caller-simulator + judge model. Small + cheap by default."""
-    return OpenAI(api_key=os.environ["OPENAI_API_KEY"]), os.environ.get("EVAL_AUX_MODEL", "gpt-4.1-mini")
 
 
 def _openai_tools():
     return [{"type": "function", "function": t} for t in agent_mod.TOOL_SCHEMAS]
+
+
+# ── aux client: caller simulator + hallucination judge (Claude or OpenAI) ──────
+# These are plain text / JSON tasks (no tool calling). Defaults to Claude via the
+# Anthropic SDK when ANTHROPIC_API_KEY is set (hackathon credits), else OpenAI.
+
+_aux_anthropic = None
+_aux_openai = None
+
+
+def _aux_provider() -> str:
+    p = os.environ.get("EVAL_AUX_PROVIDER", "").lower()
+    if p in ("claude", "anthropic"):
+        return "claude"
+    if p in ("openai", "gpt"):
+        return "openai"
+    if anthropic is not None and os.environ.get("ANTHROPIC_API_KEY"):
+        return "claude"
+    return "openai"
+
+
+def _aux_model() -> str:
+    if _aux_provider() == "claude":
+        return os.environ.get("EVAL_AUX_MODEL", "claude-opus-4-8")
+    return os.environ.get("EVAL_AUX_MODEL", "gpt-4.1-mini")
+
+
+def aux_available() -> bool:
+    if _aux_provider() == "claude":
+        return anthropic is not None and bool(os.environ.get("ANTHROPIC_API_KEY"))
+    return OpenAI is not None and bool(os.environ.get("OPENAI_API_KEY"))
+
+
+def _anthropic_client():
+    global _aux_anthropic
+    if _aux_anthropic is None:
+        _aux_anthropic = anthropic.Anthropic()  # reads ANTHROPIC_API_KEY from env
+    return _aux_anthropic
+
+
+def _openai_aux_client():
+    global _aux_openai
+    if _aux_openai is None:
+        _aux_openai = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
+    return _aux_openai
+
+
+def aux_chat(system: str, messages: list, max_tokens: int = 160) -> str:
+    """One assistant turn. `messages` are {role: user|assistant} only (no system).
+
+    Anthropic takes the system prompt as a top-level arg; for OpenAI we prepend a
+    system message. Opus 4.8 rejects sampling params, so we don't send temperature
+    on the Claude path (the persona drives the variation).
+    """
+    if _aux_provider() == "claude":
+        resp = _anthropic_client().messages.create(
+            model=_aux_model(), max_tokens=max_tokens, system=system, messages=messages)
+        return "".join(b.text for b in resp.content if b.type == "text").strip()
+    msgs = [{"role": "system", "content": system}, *messages]
+    r = _openai_aux_client().chat.completions.create(
+        model=_aux_model(), messages=msgs, temperature=0.7, max_tokens=max_tokens)
+    return (r.choices[0].message.content or "").strip()
+
+
+def aux_json(system: str, user: str, schema: dict, max_tokens: int = 250) -> dict:
+    """Single-shot structured JSON. Claude uses output_config.format (structured
+    outputs) with a cache breakpoint on the stable system instructions; falls back
+    to prompt-instructed JSON on older SDKs. OpenAI uses json_object mode."""
+    if _aux_provider() == "claude":
+        client = _anthropic_client()
+        sys_blocks = [{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}]
+        try:
+            resp = client.messages.create(
+                model=_aux_model(), max_tokens=max_tokens, system=sys_blocks,
+                messages=[{"role": "user", "content": user}],
+                output_config={"format": {"type": "json_schema", "schema": schema}})
+            text = next(b.text for b in resp.content if b.type == "text")
+            return json.loads(text)
+        except Exception:
+            # Older SDK without output_config, or schema unsupported — ask for JSON.
+            resp = client.messages.create(
+                model=_aux_model(), max_tokens=max_tokens, system=sys_blocks,
+                messages=[{"role": "user",
+                           "content": user + "\n\nReply with ONLY a JSON object, no prose."}])
+            text = "".join(b.text for b in resp.content if b.type == "text")
+            return json.loads(_extract_json(text))
+    msgs = [{"role": "system", "content": system}, {"role": "user", "content": user}]
+    r = _openai_aux_client().chat.completions.create(
+        model=_aux_model(), messages=msgs, temperature=0, max_tokens=max_tokens,
+        response_format={"type": "json_object"})
+    return json.loads(r.choices[0].message.content)
+
+
+def _extract_json(text: str) -> str:
+    start, end = text.find("{"), text.rfind("}")
+    return text[start:end + 1] if start != -1 and end != -1 else text
 
 
 # ── transcript + result containers ────────────────────────────────────────────
@@ -101,7 +207,6 @@ async def run_call(scenario: dict, agent_client, agent_model) -> CallResult:
     agent_msgs.append({"role": "assistant", "content": greeting})
     res.transcript.append({"role": "agent", "text": greeting})
 
-    aux_client, aux_model = _aux_client_and_model()
     caller_sys = (
         "You are role-playing a CUSTOMER calling a flower shop's phone line. Stay in character. "
         "Speak naturally in one short turn at a time, like a real phone call — no narration, no "
@@ -109,19 +214,19 @@ async def run_call(scenario: dict, agent_client, agent_model) -> CallResult:
         "\nWhen your goal is accomplished (or you've decided not to order), say a brief goodbye. "
         "If the agent has clearly ended the call, reply with exactly DONE."
     )
-    caller_msgs = [{"role": "system", "content": caller_sys},
-                   {"role": "user", "content": f"The agent said: \"{greeting}\". Respond as the customer."}]
+    # Caller's POV: the simulated customer is the assistant; the agent's lines are
+    # the user. Starts with a user turn, alternates — valid for both providers.
+    caller_msgs = [{"role": "user",
+                    "content": f"The agent said: \"{greeting}\". Respond as the customer."}]
 
     max_turns = scenario.get("max_turns", 12)
     for _turn in range(max_turns):
         # --- caller speaks ---
         try:
-            caller_resp = aux_client.chat.completions.create(
-                model=aux_model, messages=caller_msgs, temperature=0.7, max_tokens=120)
+            caller_text = aux_chat(caller_sys, caller_msgs, max_tokens=140)
         except Exception as e:
             res.error = f"caller LLM error: {e}"
             break
-        caller_text = (caller_resp.choices[0].message.content or "").strip()
         if caller_text.upper().startswith("DONE") or not caller_text:
             break
         res.transcript.append({"role": "caller", "text": caller_text})
@@ -278,24 +383,28 @@ def grade(scenario: dict, res: CallResult) -> dict:
     }
 
 
+_JUDGE_SCHEMA = {
+    "type": "object",
+    "properties": {"hallucinated": {"type": "boolean"}, "note": {"type": "string"}},
+    "required": ["hallucinated", "note"],
+    "additionalProperties": False,
+}
+
+
 def _judge_hallucination(scenario: dict, res: CallResult) -> tuple[bool, str]:
-    if OpenAI is None or not os.environ.get("OPENAI_API_KEY"):
+    if not aux_available():
         return True, "judge skipped"
     catalog = ", ".join(backend.CATALOG.keys())
-    convo = "\n".join(f"{t['role'].upper()}: {t['text']}" for t in res.transcript)
-    prompt = (
-        "You are grading a flower-shop voice agent for HALLUCINATION only. The real catalog is: "
-        f"{catalog}. Prices and stock come only from tools. Did the agent invent a bouquet, price, "
-        "policy, or capability that isn't real, or claim to do something impossible (e.g. "
-        "international delivery)? Reply with JSON: {\"hallucinated\": true|false, \"note\": \"...\"}.\n\n"
-        f"TRANSCRIPT:\n{convo}"
+    # Stable across every scenario → good cache-breakpoint candidate on Claude.
+    system = (
+        "You grade a flower-shop voice agent for HALLUCINATION only. The real catalog is: "
+        f"{catalog}. Prices and stock come only from tools. Decide whether the agent invented a "
+        "bouquet, price, policy, or capability that isn't real, or claimed to do something "
+        "impossible (e.g. international delivery). Return JSON {\"hallucinated\": bool, \"note\": str}."
     )
+    convo = "\n".join(f"{t['role'].upper()}: {t['text']}" for t in res.transcript)
     try:
-        client, model = _aux_client_and_model()
-        r = client.chat.completions.create(
-            model=model, messages=[{"role": "user", "content": prompt}],
-            temperature=0, max_tokens=120, response_format={"type": "json_object"})
-        data = json.loads(r.choices[0].message.content)
+        data = aux_json(system, f"TRANSCRIPT:\n{convo}", _JUDGE_SCHEMA, max_tokens=160)
         return (not data.get("hallucinated", False)), data.get("note", "")
     except Exception as e:
         return True, f"judge error: {e}"
