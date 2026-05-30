@@ -97,7 +97,11 @@ def build_system_prompt(memory: dict | None, policy: dict) -> str:
         bits = []
         if memory.get("name"):
             bits.append(f"name on file: {memory['name']}")
-        if memory.get("allergies"):
+        # Allergy awareness is part of the safety capability the improvement loop
+        # installs: in the v1 baseline (enforce_allergens off) the agent isn't told
+        # the caller's allergies, so it can be trapped; turning the rule on adds
+        # both the prompt awareness and the hard add_to_order guard.
+        if memory.get("allergies") and policy.get("enforce_allergens"):
             bits.append(f"KNOWN ALLERGIES: {', '.join(memory['allergies'])}")
         if memory.get("dislikes"):
             bits.append(f"dislikes: {', '.join(memory['dislikes'])}")
