@@ -21,14 +21,18 @@ dev = [
 ]
 
 [tool.uv]
-# Intel-Mac (x86_64 macOS) lacks prebuilt wheels for the versions of onnxruntime
-# (>=1.24.3) and numba/llvmlite (0.65.1/0.47.0) that pipecat-ai 1.3.0 pulls in.
-# Force the newest versions that DO ship Intel-Mac wheels — gated to darwin/x86_64
-# so the Linux cloud build and Apple-Silicon use pipecat's native deps untouched.
+# Intel-Mac (x86_64 macOS) lacks prebuilt wheels for the onnxruntime/numba/llvmlite
+# versions pipecat-ai 1.3.0 pulls in. A uv override REPLACES the dependency's
+# constraint everywhere, so we must specify BOTH branches: the Intel-Mac-friendly
+# versions on darwin/x86_64, and pipecat's native versions everywhere else (Linux
+# cloud build, Apple Silicon) — otherwise the package gets dropped on Linux.
 override-dependencies = [
-    "onnxruntime==1.23.2; sys_platform=='darwin' and platform_machine=='x86_64'",
-    "numba==0.62.1; sys_platform=='darwin' and platform_machine=='x86_64'",
-    "llvmlite==0.45.1; sys_platform=='darwin' and platform_machine=='x86_64'",
+    "onnxruntime==1.23.2; sys_platform == 'darwin' and platform_machine == 'x86_64'",
+    "numba==0.62.1; sys_platform == 'darwin' and platform_machine == 'x86_64'",
+    "llvmlite==0.45.1; sys_platform == 'darwin' and platform_machine == 'x86_64'",
+    "onnxruntime>=1.24.3,<1.25; sys_platform != 'darwin' or platform_machine != 'x86_64'",
+    "numba==0.65.1; sys_platform != 'darwin' or platform_machine != 'x86_64'",
+    "llvmlite==0.47.0; sys_platform != 'darwin' or platform_machine != 'x86_64'",
 ]
 
 [tool.ruff]
