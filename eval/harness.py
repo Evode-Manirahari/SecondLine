@@ -273,9 +273,13 @@ async def run_call(scenario: dict, agent_client, agent_model) -> CallResult:
 
         if spoke:
             res.transcript.append({"role": "agent", "text": spoke})
-            caller_msgs.append({"role": "user", "content": f"The agent said: \"{spoke}\". Respond as the customer."})
         if "end_call" in [t["name"] for t in res.tool_calls[-3:]]:
             break
+        # Always hand the caller a user turn so the (Claude) caller request ends on
+        # a user message — Claude/Opus rejects a conversation ending in assistant.
+        agent_said = spoke or "(the agent took an action without speaking)"
+        caller_msgs.append({"role": "user",
+                            "content": f"The agent said: \"{agent_said}\". Respond as the customer."})
 
     res.order = session.order
     res.escalated = res.escalated or session.escalated
