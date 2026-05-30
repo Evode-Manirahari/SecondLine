@@ -8,6 +8,10 @@ dependencies = [
     "pipecatcloud>=0.7.1",
     "openai>=1.40.0",
     "anthropic>=0.40.0",
+    # Daily transport (used by Pipecat Cloud sessions + Cekura's automated voice
+    # tests). daily-python has no Intel-Mac wheel, so install it everywhere EXCEPT
+    # darwin/x86_64 — local Intel-Mac dev uses the SmallWebRTC transport instead.
+    "daily-python; sys_platform != 'darwin' or platform_machine != 'x86_64'",
     "fastapi>=0.115.0",
     "uvicorn>=0.30.0",
     "aiohttp>=3.9.0",

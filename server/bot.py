@@ -39,6 +39,7 @@ from pipecat.processors.aggregators.llm_response_universal import (
 )
 from pipecat.processors.frame_processor import FrameDirection
 from pipecat.runner.types import (
+    DailyRunnerArguments,
     RunnerArguments,
     SmallWebRTCRunnerArguments,
     WebSocketRunnerArguments,
@@ -341,6 +342,23 @@ async def bot(runner_args: RunnerArguments):
                     serializer=serializer,
                 ),
             )
+        case DailyRunnerArguments():
+            # Pipecat Cloud starts a Daily/WebRTC session this way (used by the
+            # Cekura automated voice tests and any browser/Daily client). Lazy
+            # import so local Intel-Mac dev doesn't need daily-python installed.
+            from pipecat.transports.daily.transport import DailyParams, DailyTransport
+
+            transport = DailyTransport(
+                runner_args.room_url,
+                runner_args.token,
+                "SecondLine",
+                params=DailyParams(
+                    audio_in_enabled=True,
+                    audio_in_filter=krisp_filter,
+                    audio_out_enabled=True,
+                ),
+            )
+            call_id = getattr(runner_args, "session_id", None) or f"daily-{int(time.time())}"
         case _:
             logger.error(f"Unsupported runner arguments type: {type(runner_args)}")
             return
