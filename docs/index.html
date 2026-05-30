@@ -1,0 +1,248 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>SecondLine — the voice agent for the calls you can't pick up</title>
+<meta name="description" content="SecondLine is a self-improving voice agent for missed calls at small local businesses. Real phone number, persistent memory, typed tools, and an evaluation loop that finds and fixes its own mistakes." />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0a0b10; --bg2:#0f111a; --ink:#eef1f7; --mut:#9aa3b2; --line:#1d2230;
+    --bloom1:#ff8a5c; --bloom2:#ff5d8f; --bloom3:#c084fc; --grn:#34d399; --amb:#fbbf24;
+    --card:rgba(255,255,255,.035);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  body{background:var(--bg);color:var(--ink);font-family:Inter,system-ui,sans-serif;line-height:1.6;overflow-x:hidden}
+  .serif{font-family:Fraunces,Georgia,serif}
+  a{color:inherit;text-decoration:none}
+  .wrap{max-width:1080px;margin:0 auto;padding:0 24px}
+  .accent{background:linear-gradient(100deg,var(--bloom1),var(--bloom2) 55%,var(--bloom3));-webkit-background-clip:text;background-clip:text;color:transparent}
+
+  /* ambient glow */
+  .glow{position:fixed;inset:0;z-index:-2;background:
+     radial-gradient(60vw 50vh at 75% -10%, rgba(255,93,143,.18), transparent 60%),
+     radial-gradient(50vw 40vh at 10% 10%, rgba(192,132,252,.14), transparent 60%),
+     radial-gradient(60vw 50vh at 50% 110%, rgba(255,138,92,.12), transparent 60%);}
+  .grid-bg{position:fixed;inset:0;z-index:-1;opacity:.25;
+     background-image:linear-gradient(var(--line) 1px,transparent 1px),linear-gradient(90deg,var(--line) 1px,transparent 1px);
+     background-size:48px 48px;mask-image:radial-gradient(circle at 50% 30%,#000,transparent 80%)}
+
+  /* nav */
+  nav{position:sticky;top:0;z-index:20;backdrop-filter:blur(12px);background:rgba(10,11,16,.6);border-bottom:1px solid var(--line)}
+  nav .wrap{display:flex;align-items:center;justify-content:space-between;height:62px}
+  .logo{display:flex;align-items:center;gap:10px;font-weight:700;letter-spacing:.2px}
+  .logo .dot{width:10px;height:10px;border-radius:50%;background:linear-gradient(var(--bloom1),var(--bloom2));box-shadow:0 0 14px var(--bloom2)}
+  .nav-cta{font-size:14px;border:1px solid var(--line);padding:9px 16px;border-radius:999px;color:var(--ink);transition:.2s}
+  .nav-cta:hover{border-color:var(--bloom2);box-shadow:0 0 20px rgba(255,93,143,.25)}
+  .navlinks{display:flex;gap:26px;font-size:14px;color:var(--mut)}
+  .navlinks a:hover{color:var(--ink)}
+  @media(max-width:720px){.navlinks{display:none}}
+
+  /* hero */
+  header.hero{padding:74px 0 40px;text-align:center;position:relative}
+  .pill{display:inline-flex;align-items:center;gap:8px;font-size:13px;color:var(--mut);border:1px solid var(--line);padding:6px 14px;border-radius:999px;background:var(--card)}
+  .live{width:8px;height:8px;border-radius:50%;background:var(--grn);box-shadow:0 0 0 0 rgba(52,211,153,.6);animation:pulse 2s infinite}
+  @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(52,211,153,.5)}70%{box-shadow:0 0 0 10px rgba(52,211,153,0)}100%{box-shadow:0 0 0 0 rgba(52,211,153,0)}}
+  h1{font-size:clamp(40px,7vw,76px);line-height:1.03;font-weight:600;margin:22px 0 0;letter-spacing:-.02em}
+  .sub{font-size:clamp(17px,2.4vw,21px);color:var(--mut);max-width:680px;margin:20px auto 0}
+  .cta-row{margin-top:34px;display:flex;gap:14px;justify-content:center;flex-wrap:wrap}
+  .call-btn{display:inline-flex;align-items:center;gap:12px;font-size:19px;font-weight:600;padding:16px 26px;border-radius:999px;
+     background:linear-gradient(100deg,var(--bloom1),var(--bloom2));color:#150a12;box-shadow:0 12px 40px rgba(255,93,143,.35);transition:.2s}
+  .call-btn:hover{transform:translateY(-2px);box-shadow:0 18px 50px rgba(255,93,143,.5)}
+  .call-btn .ring{animation:ring 1.4s ease-in-out infinite}
+  @keyframes ring{0%,100%{transform:rotate(0)}10%{transform:rotate(-12deg)}20%{transform:rotate(12deg)}30%{transform:rotate(-10deg)}40%{transform:rotate(8deg)}50%{transform:rotate(0)}}
+  .ghost-btn{display:inline-flex;align-items:center;gap:8px;font-size:16px;padding:16px 22px;border-radius:999px;border:1px solid var(--line);color:var(--ink)}
+  .ghost-btn:hover{border-color:var(--bloom3)}
+  .tinynote{margin-top:14px;font-size:13px;color:var(--mut)}
+
+  /* waveform */
+  .wave{display:flex;align-items:center;justify-content:center;gap:5px;height:84px;margin:40px auto 0;max-width:560px}
+  .wave span{width:5px;border-radius:6px;background:linear-gradient(var(--bloom1),var(--bloom3));animation:eq 1.1s ease-in-out infinite;opacity:.85}
+  @keyframes eq{0%,100%{height:14px}50%{height:64px}}
+
+  section{padding:64px 0;border-top:1px solid var(--line)}
+  .eyebrow{font-size:13px;letter-spacing:.18em;text-transform:uppercase;color:var(--bloom2);font-weight:600}
+  h2{font-size:clamp(28px,4.4vw,42px);font-weight:600;letter-spacing:-.02em;margin:12px 0 0}
+  .lead{color:var(--mut);font-size:18px;max-width:720px;margin:14px 0 0}
+
+  .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-top:36px}
+  .stat{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:22px}
+  .stat .n{font-size:34px;font-weight:700}.stat .n.serif{font-family:Fraunces}
+  .stat .l{color:var(--mut);font-size:14px;margin-top:6px}
+  @media(max-width:760px){.stats{grid-template-columns:1fr 1fr}}
+
+  .pipe{display:flex;flex-wrap:wrap;gap:10px;margin-top:34px;align-items:stretch}
+  .node{flex:1;min-width:150px;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px}
+  .node .k{font-size:12px;color:var(--bloom2);font-weight:600;text-transform:uppercase;letter-spacing:.1em}
+  .node .v{font-weight:600;margin-top:6px}.node .d{color:var(--mut);font-size:13px;margin-top:4px}
+  .arrow{align-self:center;color:var(--mut);font-size:20px}
+  @media(max-width:760px){.arrow{display:none}}
+
+  .cards{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:34px}
+  .feat{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:24px}
+  .feat h3{font-size:20px;font-weight:600;display:flex;align-items:center;gap:10px}
+  .feat p{color:var(--mut);margin-top:8px;font-size:15px}
+  .feat .ic{font-size:22px}
+  @media(max-width:760px){.cards{grid-template-columns:1fr}}
+
+  /* improvement bars */
+  .improve{display:flex;gap:30px;flex-wrap:wrap;align-items:center;margin-top:30px}
+  .bars{display:flex;align-items:flex-end;gap:24px;height:170px}
+  .bar{display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:8px;height:100%}
+  .bar .col{width:72px;border-radius:10px 10px 0 0;transition:height 1s ease}
+  .b-before{background:#3a2f10}.b-after{background:linear-gradient(180deg,var(--grn),#0f9b6c)}
+  .bar .v{font-weight:700;font-size:20px}.bar .lbl{color:var(--mut);font-size:13px}
+  .imp-points{flex:1;min-width:260px}
+  .imp-points li{list-style:none;padding:10px 0;border-bottom:1px solid var(--line);color:var(--mut)}
+  .imp-points b{color:var(--ink)}
+  .chip{display:inline-block;font-size:12px;font-weight:600;padding:3px 10px;border-radius:999px;margin-right:6px}
+  .chip.red{background:#3a1414;color:#f87171}.chip.grn{background:#10341f;color:var(--grn)}
+
+  .demo{background:linear-gradient(160deg,rgba(255,93,143,.08),rgba(192,132,252,.05));border:1px solid var(--line);border-radius:20px;padding:28px;margin-top:30px}
+  .bubble{background:#11131d;border:1px solid var(--line);border-radius:14px;padding:14px 16px;margin-top:12px;max-width:80%}
+  .bubble.me{margin-left:auto;background:linear-gradient(100deg,rgba(255,138,92,.18),rgba(255,93,143,.14));border-color:rgba(255,93,143,.3)}
+  .bubble .who{font-size:12px;color:var(--mut);margin-bottom:3px}
+
+  .stack{display:flex;flex-wrap:wrap;gap:10px;margin-top:28px}
+  .badge{font-size:13px;color:var(--mut);border:1px solid var(--line);border-radius:999px;padding:8px 16px;background:var(--card)}
+  .badge b{color:var(--ink)}
+
+  footer{padding:50px 0 70px;border-top:1px solid var(--line);text-align:center;color:var(--mut);font-size:14px}
+  footer .big{font-family:Fraunces;font-size:30px;color:var(--ink);margin-bottom:10px}
+  .src{font-size:12px;color:#6b7280;margin-top:18px;line-height:1.8}
+  .src a{color:#8a93a3;border-bottom:1px dotted #3a4150}
+</style>
+</head>
+<body>
+<div class="glow"></div><div class="grid-bg"></div>
+
+<nav><div class="wrap">
+  <div class="logo"><span class="dot"></span> SecondLine</div>
+  <div class="navlinks">
+    <a href="#problem">The problem</a>
+    <a href="#how">How it works</a>
+    <a href="#improve">Self-improving</a>
+    <a href="#demo">Live demo</a>
+  </div>
+  <a class="nav-cta" href="tel:+18887788643">📞 Call the agent</a>
+</div></nav>
+
+<header class="hero"><div class="wrap">
+  <span class="pill"><span class="live"></span> Agent live now · NVIDIA Nemotron on Pipecat Cloud</span>
+  <h1>The voice agent for<br>the calls you <span class="accent serif">can't pick up.</span></h1>
+  <p class="sub">SecondLine answers a small business's missed calls, remembers the caller, takes the order through typed tools, and texts the owner — then <b>tests and improves itself</b> on every call.</p>
+  <div class="cta-row">
+    <a class="call-btn" href="tel:+18887788643"><span class="ring">📞</span> Call +1 888 778 8643</a>
+    <a class="ghost-btn" href="#demo">▶ See the killer demo</a>
+  </div>
+  <div class="tinynote">Real phone number. Real agent. Pick up your phone and talk to it.</div>
+  <div class="wave" id="wave"></div>
+</div></header>
+
+<section id="problem"><div class="wrap">
+  <div class="eyebrow">The silent profit leak</div>
+  <h2>Local businesses lose money every time the phone rings unanswered.</h2>
+  <p class="lead">It rings far more than they can answer — and the callers don't leave a message. They call the next shop.</p>
+  <div class="stats">
+    <div class="stat"><div class="n serif accent">62%</div><div class="l">of calls to small businesses go unanswered</div></div>
+    <div class="stat"><div class="n serif accent">85%</div><div class="l">of voicemail callers never call back</div></div>
+    <div class="stat"><div class="n serif accent">$126K</div><div class="l">avg. yearly revenue lost to missed calls</div></div>
+    <div class="stat"><div class="n serif accent">⅔</div><div class="l">of florist voicemail callers just call a competitor</div></div>
+  </div>
+</div></section>
+
+<section id="how"><div class="wrap">
+  <div class="eyebrow">Production architecture, not a chatbot</div>
+  <h2>A reliable voice employee for the second line.</h2>
+  <p class="lead">Telephony in, typed tools out. The model is never trusted to invent business state — it can only act through tools that read and write a real database.</p>
+  <div class="pipe">
+    <div class="node"><div class="k">Phone</div><div class="v">Twilio</div><div class="d">Missed calls forward in</div></div>
+    <div class="arrow">→</div>
+    <div class="node"><div class="k">Voice</div><div class="v">Pipecat · Daily</div><div class="d">STT → LLM → TTS, turns, interruptions</div></div>
+    <div class="arrow">→</div>
+    <div class="node"><div class="k">Brain</div><div class="v">Nemotron 120B</div><div class="d">NVIDIA open-weight, on AWS</div></div>
+    <div class="arrow">→</div>
+    <div class="node"><div class="k">Tools</div><div class="v">Typed actions</div><div class="d">order · memory · SMS · escalate</div></div>
+    <div class="arrow">→</div>
+    <div class="node"><div class="k">Owner</div><div class="v">Tasks + SMS</div><div class="d">Dashboard of what happened</div></div>
+  </div>
+  <div class="cards">
+    <div class="feat"><h3><span class="ic">🧠</span> Persistent memory</h3><p>Recognizes returning callers by number, recalls past orders and constraints. "Same as last time, but no lilies — my mom's allergic" just works.</p></div>
+    <div class="feat"><h3><span class="ic">🛡️</span> Safety-aware</h3><p>Allergens on file are enforced at the tool layer — the agent physically cannot add a bouquet a caller is allergic to.</p></div>
+    <div class="feat"><h3><span class="ic">🧾</span> Owner workflow</h3><p>Every order becomes a structured task — customer, request, confidence, due time, next action — with an SMS summary.</p></div>
+    <div class="feat"><h3><span class="ic">🙋</span> Knows its limits</h3><p>Refunds, complaints, impossible asks → escalates to a human instead of guessing. Never invents prices or policy.</p></div>
+  </div>
+</div></section>
+
+<section id="improve"><div class="wrap">
+  <div class="eyebrow">The part that wins</div>
+  <h2>It finds and fixes its own mistakes.</h2>
+  <p class="lead">Every call is logged, tested, scored, and used to improve the next version — with real automated test calls (Cekura) and an evaluation harness, not vibes.</p>
+  <div class="improve">
+    <div class="bars">
+      <div class="bar"><div class="v" style="color:var(--amb)">88%</div><div class="col b-before" style="height:62%"></div><div class="lbl">before</div></div>
+      <div class="bar"><div class="v" style="color:var(--grn)">94%</div><div class="col b-after" style="height:88%"></div><div class="lbl">after auto-patch</div></div>
+    </div>
+    <ul class="imp-points">
+      <li><span class="chip red">unsafe&nbsp;1</span>→<span class="chip grn">unsafe&nbsp;0</span> the loop caught the agent adding a lily bouquet to a lily-allergic caller, wrote a validation rule, and proved it gone.</li>
+      <li><b>Failures become fixes.</b> Each failed call → a structured bug report → a prompt patch, validation rule, escalation rule, or memory update → re-run.</li>
+      <li><b>Real automated test calls.</b> Cekura places live voice calls, scores transcripts, and surfaced a production bug our local tests couldn't — which we fixed and re-verified.</li>
+    </ul>
+  </div>
+</div></section>
+
+<section id="demo"><div class="wrap">
+  <div class="eyebrow">Try it yourself</div>
+  <h2>The 30-second killer demo.</h2>
+  <div class="demo">
+    <div class="bubble me"><div class="who">You (call +1 888 778 8643)</div>"Hi — same as last time, but no lilies, my mom's allergic. And text me the pickup address."</div>
+    <div class="bubble"><div class="who">SecondLine</div>"Welcome back! I've got your usual — a dozen red roses. I'll keep it lily-free since you mentioned the allergy. Pickup at five, and I'll text you the address. You're all set — thanks for calling Field &amp; Flower! 🌷"</div>
+    <div class="tinynote" style="margin-top:16px">→ recalls the order · honors the allergy · texts the address · files the owner task — then ends the call naturally.</div>
+  </div>
+  <div class="cta-row" style="justify-content:flex-start">
+    <a class="call-btn" href="tel:+18887788643"><span class="ring">📞</span> Call +1 888 778 8643</a>
+  </div>
+</div></section>
+
+<section><div class="wrap">
+  <div class="eyebrow">Built on</div>
+  <h2>An open, sponsor-grade stack.</h2>
+  <div class="stack">
+    <span class="badge"><b>NVIDIA</b> Nemotron-3-Super (open-weight)</span>
+    <span class="badge"><b>Pipecat</b> orchestration</span>
+    <span class="badge"><b>Daily</b> real-time transport</span>
+    <span class="badge"><b>Twilio</b> telephony</span>
+    <span class="badge"><b>Cekura</b> automated eval</span>
+    <span class="badge"><b>Gradium</b> STT + TTS</span>
+    <span class="badge"><b>AWS</b> hosting</span>
+    <span class="badge"><b>Pipecat Cloud</b> deploy</span>
+  </div>
+</div></section>
+
+<footer><div class="wrap">
+  <div class="big serif">SecondLine</div>
+  <div>I didn't build a chatbot. I built a voice employee that remembers, acts through typed tools, and tests and improves itself on every call.</div>
+  <div style="margin-top:18px"><a class="nav-cta" href="tel:+18887788643">📞 Call +1 888 778 8643</a></div>
+  <div class="src">
+    Built for the YC Voice Agents Hackathon · Pipecat · Cekura · NVIDIA · AWS · Twilio.<br>
+    Sources:
+    <a href="https://www.getaira.io/blog/missed-business-calls-statistics">Aira — missed-call statistics</a> ·
+    <a href="https://ringeden.com/blog/how-much-business-do-i-lose-from-voicemail">Eden — voicemail/411 Locals</a> ·
+    <a href="https://agentzap.ai/blog/florist-phone-statistics">AgentZap — florist phone stats</a>
+  </div>
+</div></footer>
+
+<script>
+  // equalizer waveform
+  const w=document.getElementById('wave');
+  for(let i=0;i<48;i++){const s=document.createElement('span');s.style.animationDelay=(-(Math.random()*1.1))+'s';s.style.opacity=(.4+Math.random()*.6).toFixed(2);w.appendChild(s);}
+  // animate the before/after bars on scroll-in
+  const io=new IntersectionObserver(es=>es.forEach(e=>{if(e.isIntersecting){e.target.querySelectorAll('.col').forEach(c=>c.style.transform='scaleY(1)');}}),{threshold:.3});
+  document.querySelectorAll('.bars').forEach(b=>io.observe(b));
+</script>
+</body>
+</html>
