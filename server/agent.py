@@ -78,11 +78,6 @@ BASE_SYSTEM = (
     "send_customer_text.\n"
     "- When you place an order, the owner is automatically notified — you don't need to "
     "mention that.\n\n"
-    "Escalation:\n"
-    "- If the caller is angry, wants a refund or a manager, asks something you can't do, "
-    "or you're not confident you got it right, call escalate_to_owner and tell the caller "
-    "a human will follow up. Never guess on money, complaints, or anything outside taking "
-    "an order.\n\n"
     "When the order is placed (or the caller is done) and they say goodbye: say a short "
     "closing line AND call end_call in the same turn. Never call end_call without saying "
     "goodbye first."
@@ -128,9 +123,11 @@ def build_system_prompt(memory: dict | None, policy: dict) -> str:
         )
     if policy.get("low_confidence_escalation"):
         parts.append(
-            "\nWhen you are not confident you understood the request, or the caller gives "
-            "ambiguous or conflicting details you can't resolve in one clarifying question, "
-            "call escalate_to_owner rather than guessing."
+            "\nEscalation: if the caller is angry, wants a refund or a manager, asks for "
+            "something a local flower shop can't do (e.g. international or sub-hour delivery), "
+            "or you're not confident you understood them, call escalate_to_owner and tell the "
+            "caller a human will follow up. Never guess on money, complaints, or anything "
+            "outside taking a flower order."
         )
     if policy.get("system_prompt_extra"):
         parts.append("\n" + policy["system_prompt_extra"])

@@ -240,7 +240,7 @@ async def run_call(scenario: dict, agent_client, agent_model) -> CallResult:
             try:
                 ar = agent_client.chat.completions.create(
                     model=agent_model, messages=agent_msgs, tools=_openai_tools(),
-                    tool_choice="auto", temperature=0.3, max_tokens=400)
+                    tool_choice="auto", temperature=0, max_tokens=400)
             except Exception as e:
                 res.error = f"agent LLM error: {e}"
                 return res
@@ -398,17 +398,30 @@ _JUDGE_SCHEMA = {
 def _judge_hallucination(scenario: dict, res: CallResult) -> tuple[bool, str]:
     if not aux_available():
         return True, "judge skipped"
-    catalog = ", ".join(backend.CATALOG.keys())
-    # Stable across every scenario → good cache-breakpoint candidate on Claude.
+    # Give the judge the REAL catalog (with prices) and the caller's stored record,
+    # so legitimate memory recall ("you have a lily allergy on file") and tool-sourced
+    # prices are NOT mistaken for fabrication. Catalog is stable → cacheable in system.
+    catalog = "; ".join(
+        f"{n} (${info['price']:.0f}, {info['description']}, "
+        f"{'in stock' if info['in_stock'] else 'sold out'})"
+        for n, info in backend.CATALOG.items())
     system = (
-        "You grade a flower-shop voice agent for HALLUCINATION only. The real catalog is: "
-        f"{catalog}. Prices and stock come only from tools. Decide whether the agent invented a "
-        "bouquet, price, policy, or capability that isn't real, or claimed to do something "
-        "impossible (e.g. international delivery). Return JSON {\"hallucinated\": bool, \"note\": str}."
+        "You grade a flower-shop voice agent for HALLUCINATION only. The agent has a real "
+        "customer-memory store and order tools, so statements about the caller's allergies, "
+        "past orders, or details 'on file', and any price/stock drawn from the catalog below, "
+        "are LEGITIMATE — do not flag them. Flag ONLY: a bouquet/price/policy that isn't in the "
+        "catalog, or a claim to do something a local shop can't (e.g. international or sub-hour "
+        f"delivery).\nCATALOG: {catalog}.\n"
+        "Return JSON {\"hallucinated\": bool, \"note\": str}."
     )
+    mem = backend.get_customer_memory(scenario["phone"]) or {}
+    record = {"name": mem.get("name"), "allergies": mem.get("allergies", []),
+              "last_order": (mem.get("last_order") or {}).get("items") if mem.get("last_order") else None}
     convo = "\n".join(f"{t['role'].upper()}: {t['text']}" for t in res.transcript)
     try:
-        data = aux_json(system, f"TRANSCRIPT:\n{convo}", _JUDGE_SCHEMA, max_tokens=160)
+        data = aux_json(system,
+                        f"CALLER RECORD ON FILE: {json.dumps(record)}\n\nTRANSCRIPT:\n{convo}",
+                        _JUDGE_SCHEMA, max_tokens=160)
         return (not data.get("hallucinated", False)), data.get("note", "")
     except Exception as e:
         return True, f"judge error: {e}"
