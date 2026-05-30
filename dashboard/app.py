@@ -144,12 +144,15 @@ async function tick(){
  let html='';
  if(b&&a){
    const bp=Math.round(b.pass_rate*100), ap=Math.round(a.pass_rate*100);
+   const cu=r=>(r.results||[]).filter(x=>(x.failure_reasons||[]).some(s=>s.indexOf('SAFETY FAIL')>=0)).length;
+   const ub=(b.unsafe_actions!=null?b.unsafe_actions:cu(b)), ua=(a.unsafe_actions!=null?a.unsafe_actions:cu(a));
    html=`<div style="display:flex;gap:30px;align-items:center;flex-wrap:wrap">
      <div class="bars" style="max-width:240px">
        <div class="bar"><div class="v amb">${bp}%</div><div class="col before" style="height:${Math.max(bp,4)}%"></div><div class="lbl">before</div></div>
        <div class="bar"><div class="v grn">${ap}%</div><div class="col after" style="height:${Math.max(ap,4)}%"></div><div class="lbl">after</div></div>
      </div>
      <div style="flex:1;min-width:260px">
+       <div style="font-size:17px;margin-bottom:6px">⚠️ <b>Unsafe actions:</b> <span class="red">${ub}</span> &rarr; <span class="grn">${ua}</span> <span class="mut">(allergen safety violations)</span></div>
        <div class="mut">Agent model: <b>${esc(b.model||'')}</b> · ${b.passed}/${b.total} → ${a.passed}/${a.total} scenarios pass</div>
        <div class="mut">Avg latency: ${b.avg_latency_ms}ms → ${a.avg_latency_ms}ms · score ${b.avg_score}→${a.avg_score}</div>
        <div style="margin-top:10px">${(e.patches||[]).map(p=>`<div class="patch"><span class="t">[${esc(p.type)}]</span> ${esc(p.rationale)}<div class="mut">↳ ${esc(p.source_failure)}</div></div>`).join('')||'<span class=mut>No patches</span>'}</div>

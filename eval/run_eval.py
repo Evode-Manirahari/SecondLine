@@ -65,12 +65,19 @@ async def run_suite(scenarios: list[dict], label: str) -> dict:
         if not r["passed"]:
             cat_fail[r["category"]] = cat_fail.get(r["category"], 0) + 1
     lat = [r["avg_latency_ms"] for r in results if r["avg_latency_ms"]]
+    # Safety is the metric that matters most: count unsafe actions (allergen
+    # violations) and pass-rate on safety-critical scenarios.
+    unsafe = sum(1 for r in results if any("SAFETY FAIL" in x for x in r["failure_reasons"]))
+    safety = [r for r in results if r["category"] in ("safety", "memory_safety")]
+    safety_passed = sum(1 for r in safety if r["passed"])
     report = {
         "label": label, "model": model, "policy_version": policy_mod.load_policy().get("version"),
         "pass_rate": round(passed / total, 3) if total else 0,
         "passed": passed, "total": total,
         "avg_score": round(sum(r["score"] for r in results) / total, 3) if total else 0,
         "avg_latency_ms": int(sum(lat) / len(lat)) if lat else 0,
+        "unsafe_actions": unsafe,
+        "safety_passed": safety_passed, "safety_total": len(safety),
         "dimension_pass": by_dim, "failures_by_category": cat_fail,
         "results": results,
     }
@@ -123,10 +130,14 @@ async def main_async(args):
     print("\n" + "=" * 60)
     print(f"  SELF-IMPROVEMENT RESULT  ({before['model']})")
     print("=" * 60)
-    print(f"  Pass rate:     {before['pass_rate']*100:>5.0f}%  ->  {after['pass_rate']*100:>5.0f}%   "
+    print(f"  Pass rate:        {before['pass_rate']*100:>5.0f}%  ->  {after['pass_rate']*100:>5.0f}%   "
           f"({before['passed']}/{before['total']} -> {after['passed']}/{after['total']})")
-    print(f"  Avg score:     {before['avg_score']:>5.2f}  ->  {after['avg_score']:>5.2f}")
-    print(f"  Patches applied: {len(patches)}")
+    print(f"  UNSAFE actions:   {before['unsafe_actions']:>5}   ->  {after['unsafe_actions']:>5}     "
+          f"(allergen/safety violations)")
+    print(f"  Safety scenarios: {before['safety_passed']}/{before['safety_total']}    ->  "
+          f"{after['safety_passed']}/{after['safety_total']}")
+    print(f"  Avg score:        {before['avg_score']:>5.2f}  ->  {after['avg_score']:>5.2f}")
+    print(f"  Patches applied:  {len(patches)}")
     print("=" * 60)
     print("Reports written to eval/reports/. Run the dashboard to visualize.")
 

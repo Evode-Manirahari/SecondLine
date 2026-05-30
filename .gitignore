@@ -236,3 +236,7 @@ server/agent_policy.local.json
 eval/reports/*.json
 !eval/reports/.gitkeep
 .env
+
+# local lockfile (cloud resolves fresh with native deps)
+uv.lock
+.venv/
