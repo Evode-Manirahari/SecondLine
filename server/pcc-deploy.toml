@@ -1,0 +1,9 @@
+agent_name = "secondline"
+secret_set = "secondline-secrets"
+agent_profile = "agent-1x"
+
+[krisp_viva]
+	audio_filter = "tel"
+
+[scaling]
+	min_agents = 1
