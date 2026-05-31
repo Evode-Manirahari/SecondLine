@@ -104,4 +104,10 @@ Everything in this repo was built **during the hackathon**, on top of the Pipeca
 
 ---
 
+## License
+
+[MIT](LICENSE) © 2026 Evode Manirahari. Portions derived from the Pipecat/Daily *Field & Flower* starter remain under BSD 2-Clause (see `LICENSE`).
+
+---
+
 *Architecture, the eval harness, and the demo script live in [`RUNBOOK.md`](RUNBOOK.md) and [`DEMO_SCRIPT.md`](DEMO_SCRIPT.md). The agent's editable policy (what the improvement loop patches) is [`server/agent_policy.json`](server/agent_policy.json).*
