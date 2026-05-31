@@ -196,24 +196,101 @@ async def run_bot(
 
     first_response_ts: dict = {"t": None, "start": time.time()}
 
-    # --- Wrap each shared tool as a Pipecat direct function -------------------
-    def make_tool(tool_name: str):
-        async def _tool(params: FunctionCallParams, **kwargs):
-            result = await agent_mod.dispatch(session, tool_name, kwargs)
-            if tool_name == "end_call":
-                await params.llm.push_frame(EndTaskFrame(), FrameDirection.UPSTREAM)
-                backend.end_call(call_id, "completed" if not session.escalated else "escalated",
-                                 _first_ms(first_response_ts))
-                await params.result_callback(
-                    result, properties=FunctionCallResultProperties(run_llm=False)
-                )
-                return
-            await params.result_callback(result)
-        _tool.__name__ = tool_name
-        _tool.__doc__ = next(t["description"] for t in agent_mod.TOOL_SCHEMAS if t["name"] == tool_name)
-        return _tool
+    # --- Tools as Pipecat direct functions with EXPLICIT typed signatures -----
+    # Pipecat builds the LLM's function schema from each function's signature +
+    # annotations + docstring. They MUST be explicit named params — a generic
+    # **kwargs wrapper makes the model send {"kwargs": "..."} and every arg is
+    # lost. Each delegates to the shared agent.dispatch (same logic the eval runs).
+    async def list_bouquets(params: FunctionCallParams, occasion: str = "", specials_only: bool = False):
+        """List bouquets available today. Optionally filter by occasion (lowercase,
+        e.g. birthday, sympathy, anniversary) or specials_only=true."""
+        await params.result_callback(await agent_mod.dispatch(
+            session, "list_bouquets", {"occasion": occasion or None, "specials_only": specials_only}))
 
-    tool_functions = [make_tool(t["name"]) for t in agent_mod.TOOL_SCHEMAS]
+    async def check_availability(params: FunctionCallParams, bouquet_name: str):
+        """Check whether a specific bouquet is in stock today.
+
+        Args:
+            bouquet_name: The bouquet name, e.g. "rose romance".
+        """
+        await params.result_callback(await agent_mod.dispatch(
+            session, "check_availability", {"bouquet_name": bouquet_name}))
+
+    async def add_to_order(params: FunctionCallParams, bouquet_name: str, quantity: int = 1):
+        """Add a bouquet to the order after the caller confirms they want it.
+
+        Args:
+            bouquet_name: The bouquet name, e.g. "rose romance".
+            quantity: How many of this bouquet. Defaults to 1.
+        """
+        await params.result_callback(await agent_mod.dispatch(
+            session, "add_to_order", {"bouquet_name": bouquet_name, "quantity": quantity}))
+
+    async def get_order_summary(params: FunctionCallParams):
+        """Read back the current order: items, quantities, running total, and delivery."""
+        await params.result_callback(await agent_mod.dispatch(session, "get_order_summary", {}))
+
+    async def set_delivery_details(params: FunctionCallParams, recipient_name: str,
+                                   address: str, delivery_date: str):
+        """Capture delivery (or pickup) details for the order.
+
+        Args:
+            recipient_name: Name of the person receiving the flowers.
+            address: Delivery street address, or "pickup" for in-store pickup.
+            delivery_date: Requested date in the caller's own words.
+        """
+        await params.result_callback(await agent_mod.dispatch(
+            session, "set_delivery_details",
+            {"recipient_name": recipient_name, "address": address, "delivery_date": delivery_date}))
+
+    async def reorder_last(params: FunctionCallParams):
+        """Pull the returning caller's last order into the current order as a starting point."""
+        await params.result_callback(await agent_mod.dispatch(session, "reorder_last", {}))
+
+    async def update_customer_memory(params: FunctionCallParams, kind: str, value: str):
+        """Persist a fact about the caller across calls.
+
+        Args:
+            kind: One of "allergy", "dislikes", "likes", "name", "note".
+            value: The value to remember (e.g. "lilies").
+        """
+        await params.result_callback(await agent_mod.dispatch(
+            session, "update_customer_memory", {"kind": kind, "value": value}))
+
+    async def send_customer_text(params: FunctionCallParams, body: str):
+        """Text the caller something they asked for (address, confirmation, details).
+
+        Args:
+            body: The text message body to send to the caller.
+        """
+        await params.result_callback(await agent_mod.dispatch(
+            session, "send_customer_text", {"body": body}))
+
+    async def escalate_to_owner(params: FunctionCallParams, reason: str):
+        """Hand off to a human: complaints, refunds, anything you can't safely handle.
+
+        Args:
+            reason: Short reason for the escalation.
+        """
+        await params.result_callback(await agent_mod.dispatch(
+            session, "escalate_to_owner", {"reason": reason}))
+
+    async def place_order(params: FunctionCallParams):
+        """Finalize the order. Only after items AND delivery are confirmed."""
+        await params.result_callback(await agent_mod.dispatch(session, "place_order", {}))
+
+    async def end_call(params: FunctionCallParams):
+        """End the call. Only AFTER you have said goodbye in the same turn."""
+        result = await agent_mod.dispatch(session, "end_call", {})
+        await params.llm.push_frame(EndTaskFrame(), FrameDirection.UPSTREAM)
+        backend.end_call(call_id, "completed" if not session.escalated else "escalated",
+                         _first_ms(first_response_ts))
+        await params.result_callback(
+            result, properties=FunctionCallResultProperties(run_llm=False))
+
+    tool_functions = [list_bouquets, check_availability, add_to_order, get_order_summary,
+                      set_delivery_details, reorder_last, update_customer_memory,
+                      send_customer_text, escalate_to_owner, place_order, end_call]
     tools = ToolsSchema(standard_tools=tool_functions)
     for fn in tool_functions:
         llm.register_direct_function(fn)

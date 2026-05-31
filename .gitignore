@@ -240,3 +240,4 @@ eval/reports/*.json
 # local lockfile (cloud resolves fresh with native deps)
 uv.lock
 .venv/
+.gstack/
